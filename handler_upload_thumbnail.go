@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
-	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/database"
 	"github.com/google/uuid"
 )
 
@@ -46,9 +45,14 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	defer file.Close()
 
 	mediaType := fileHeader.Header.Get("Content-Type")
+	if mediaType == "" {
+		respondWithError(w, http.StatusBadRequest, "Missing Content-Type for thumbnail", errors.New("Request missing Content-Type"))
+		return
+	}
+
 	fileData, err := io.ReadAll(file)
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't process file", err)
+		respondWithError(w, http.StatusInternalServerError, "Error reading file", err)
 		return
 	}
 
@@ -58,30 +62,24 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if video.UserID != userID {
-		respondWithError(w, http.StatusUnauthorized, "You are not authorized", errors.New("You are not authorized"))
+		respondWithError(w, http.StatusUnauthorized, "Not authorized to update this video", errors.New("User not authorized"))
 		return
 	}
-	videoThumbnails[video.ID] = thumbnail{
+	videoThumbnails[videoID] = thumbnail{
 		data:      fileData,
 		mediaType: mediaType,
 	}
 
 	thumbnailUrl := fmt.Sprintf("http://localhost:%s/api/thumbnails/%s", cfg.port, videoID.String())
-	newVidMetadata := database.Video{
-		ID: video.ID,
-		CreateVideoParams: database.CreateVideoParams{
-			Title:       video.Title,
-			Description: video.Description,
-			UserID:      video.UserID,
-		},
-		UpdatedAt:    time.Now(),
-		ThumbnailURL: &thumbnailUrl,
-	}
-	err = cfg.db.UpdateVideo(newVidMetadata)
+	video.ThumbnailURL = &thumbnailUrl
+	video.UpdatedAt = time.Now()
+
+	err = cfg.db.UpdateVideo(video)
 	if err != nil {
+		delete(videoThumbnails, videoID)
 		respondWithError(w, http.StatusInternalServerError, "Couldn't update video", err)
 		return
 	}
 
-	respondWithJSON(w, http.StatusOK, newVidMetadata)
+	respondWithJSON(w, http.StatusOK, video)
 }
