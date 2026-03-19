@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"mime"
 	"net/http"
 	"os"
 	"time"
@@ -46,9 +47,22 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 	defer file.Close()
 
-	mediaType := fileHeader.Header.Get("Content-Type")
-	if mediaType == "" {
+	mediaTypeStr := fileHeader.Header.Get("Content-Type")
+	if mediaTypeStr == "" {
 		respondWithError(w, http.StatusBadRequest, "Missing Content-Type for thumbnail", errors.New("Request missing Content-Type"))
+		return
+	}
+	mediaType, _, err := mime.ParseMediaType(mediaTypeStr)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Couldn't parse Content-Type", err)
+		return
+	}
+	acceptableMediaTypes := map[string]struct{}{
+		"image/jpeg": {},
+		"image/png":  {},
+	}
+	if _, ok := acceptableMediaTypes[mediaType]; !ok {
+		respondWithError(w, http.StatusBadRequest, "Image must be either jpeg or png", nil)
 		return
 	}
 
