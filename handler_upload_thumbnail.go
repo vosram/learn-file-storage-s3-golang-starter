@@ -1,11 +1,12 @@
 package main
 
 import (
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
@@ -51,12 +52,6 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	fileData, err := io.ReadAll(file)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Error reading file", err)
-		return
-	}
-
 	video, err := cfg.db.GetVideo(videoID)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't get video from DB", err)
@@ -67,14 +62,32 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	baseData := base64.StdEncoding.EncodeToString(fileData)
-	thumbnailURL := fmt.Sprintf("data:%s;base64,%s", mediaType, baseData)
-	video.ThumbnailURL = &thumbnailURL
+	assetPath := getAssetPath(videoID, mediaType)
+	assetDiskPath := cfg.getAssetDiskPath(assetPath)
+
+	newFile, err := os.Create(assetDiskPath)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't create file on server", err)
+		return
+	}
+	defer newFile.Close()
+	if _, err := io.Copy(newFile, file); err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't save file", err)
+		return
+	}
+
+	thumbnailUrl := cfg.getAssetURL(assetPath)
+	video.ThumbnailURL = &thumbnailUrl
 	video.UpdatedAt = time.Now()
 
 	err = cfg.db.UpdateVideo(video)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't update video", err)
+		err = os.Remove(assetDiskPath)
+		if err != nil {
+			log.Printf("Failed to remove file: %s", assetDiskPath)
+		}
+		log.Printf("Removed file: %s because it didn't save in the DB", assetDiskPath)
 		return
 	}
 
