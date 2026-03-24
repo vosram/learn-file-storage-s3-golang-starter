@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -38,4 +39,17 @@ func mediaTypeToExt(s string) string {
 		return ".bin"
 	}
 	return "." + subStrs[1]
+}
+
+func getHexFilename(mediaType string) string {
+	base := make([]byte, 32)
+	rand.Read(base)
+	id := hex.EncodeToString(base)
+	ext := mediaTypeToExt(mediaType)
+	return fmt.Sprintf("%s%s", id, ext)
+}
+
+func (cfg *apiConfig) getObjectUrl(key string) string {
+	return fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", cfg.s3Bucket, cfg.s3Region, key)
+
 }
