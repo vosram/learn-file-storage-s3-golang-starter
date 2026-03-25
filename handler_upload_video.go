@@ -81,10 +81,26 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 
 	_, err = tempFile.Seek(0, io.SeekStart)
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Failed to upload file", err)
+		respondWithError(w, http.StatusInternalServerError, "Could not write file to disk", err)
 		return
 	}
-	key := getHexFilename(mediaType)
+
+	videoAspectRatio, err := getVideoAspectRatio(tempFile.Name())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to inspect video dimensions", err)
+		return
+	}
+	var prefix string
+	switch videoAspectRatio {
+	case "16:9":
+		prefix = "landscape"
+	case "9:16":
+		prefix = "portrait"
+	default:
+		prefix = "other"
+	}
+
+	key := getHexFilename(mediaType, prefix)
 	bucket := cfg.s3Bucket
 	inputObj := s3.PutObjectInput{
 		Key:         &key,
